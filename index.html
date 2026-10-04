@@ -1,0 +1,804 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Dispenser control</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --paper:#F7F9F7;
+    --card:#FFFFFF;
+    --ink:#2A3B35;
+    --muted:#7C8C85;
+    --line:#E5EAE5;
+    --wedge:#EFF3EF;
+    --live:#189E8C;
+    --alert:#D9583F;
+    --ok:#47916A;
+    --radius:14px;
+    --sans:"IBM Plex Sans","Helvetica Neue",Arial,sans-serif;
+    --mono:"IBM Plex Mono",ui-monospace,"SF Mono",Menlo,monospace;
+    box-sizing:border-box;
+    padding-top:env(safe-area-inset-top,0px);
+    padding-bottom:env(safe-area-inset-bottom,0px);
+  }
+  *,*::before,*::after{box-sizing:inherit}
+  body{
+    margin:0;background:var(--paper);color:var(--ink);
+    font-family:var(--sans);font-size:16px;line-height:1.5;
+    -webkit-font-smoothing:antialiased;
+  }
+  .wrap{max-width:720px;margin:0 auto;padding:24px 20px 56px}
+
+  /* ---- header ---- */
+  header{display:flex;align-items:baseline;justify-content:space-between;gap:16px;flex-wrap:wrap;margin-bottom:28px}
+  h1{font-size:1.5rem;font-weight:600;letter-spacing:-0.015em;margin:0}
+  .device{font-family:var(--mono);font-size:.8rem;color:var(--muted);margin:2px 0 0}
+  .link-state{display:flex;align-items:center;gap:9px;font-size:.875rem;color:var(--muted)}
+  .link-state.on{color:var(--ink)}
+  .bt-icon{color:#B9C4BD;flex:none}
+  .link-state.on .bt-icon{color:var(--live)}
+  .led{
+    width:12px;height:12px;border-radius:50%;flex:none;
+    background:#CBD4CE;box-shadow:inset 0 1px 2px rgba(20,36,31,.25);
+  }
+  .led.on{
+    background:#2FD17A;
+    box-shadow:0 0 0 3px rgba(47,209,122,.20), 0 0 11px rgba(47,209,122,.85),
+               inset 0 1px 1px rgba(255,255,255,.55);
+  }
+  @media (prefers-reduced-motion: no-preference){
+    .led.on{animation:breathe 2.6s ease-in-out infinite}
+  }
+  @keyframes breathe{
+    0%,100%{box-shadow:0 0 0 3px rgba(47,209,122,.20),0 0 11px rgba(47,209,122,.85),inset 0 1px 1px rgba(255,255,255,.55)}
+    50%{box-shadow:0 0 0 3px rgba(47,209,122,.10),0 0 5px rgba(47,209,122,.45),inset 0 1px 1px rgba(255,255,255,.55)}
+  }
+
+  /* ---- banner ---- */
+  #banner{
+    display:none;align-items:center;gap:12px;
+    padding:16px 18px;border-radius:var(--radius);margin-bottom:24px;
+    font-weight:500;color:#fff;background:var(--alert);
+  }
+  #banner.show{display:flex}
+  #banner.done{background:var(--ok)}
+  #banner .pip{width:10px;height:10px;border-radius:50%;background:rgba(255,255,255,.9);flex:none}
+  @media (prefers-reduced-motion: no-preference){
+    #banner:not(.done) .pip{animation:pulse 1.4s ease-in-out infinite}
+  }
+  @keyframes pulse{0%,100%{opacity:1}50%{opacity:.25}}
+
+  /* ---- hero ---- */
+  .hero{
+    display:grid;grid-template-columns:auto 1fr;gap:32px;align-items:center;
+    background:var(--card);border:1px solid var(--line);border-radius:var(--radius);
+    padding:28px;margin-bottom:24px;
+  }
+  .dial-col{display:flex;flex-direction:column;align-items:center;gap:10px}
+  .dial-caption{font-size:.75rem;color:var(--muted)}
+  svg.dial{display:block;width:216px;height:216px}
+  #rotor{transform-origin:120px 120px;transition:transform .9s cubic-bezier(.3,.7,.2,1)}
+  @media (prefers-reduced-motion: reduce){#rotor{transition:none}}
+  .wedge{fill:var(--wedge);stroke:var(--card);stroke-width:2}
+  .wedge.next{fill:var(--live);fill-opacity:.16;stroke:var(--live);stroke-opacity:.5}
+  .wedge.firing{fill:var(--alert);fill-opacity:.2;stroke:var(--alert);stroke-opacity:.6}
+  .slot-num{font-family:var(--mono);font-size:9px;fill:var(--muted);text-anchor:middle;dominant-baseline:central;letter-spacing:.08em}
+  .slot-name{font-family:var(--sans);font-size:10.5px;font-weight:500;fill:var(--ink);text-anchor:middle;dominant-baseline:central}
+  .slot-time{font-family:var(--mono);font-size:11px;fill:var(--muted);text-anchor:middle;dominant-baseline:central}
+  #rotor g.next .slot-num,#rotor g.next .slot-time{fill:var(--live)}
+  #rotor g.next .slot-name{fill:var(--live)}
+  #rotor g.firing .slot-num,#rotor g.firing .slot-time,#rotor g.firing .slot-name{fill:var(--alert)}
+
+  /* ---- 24-hour timeline ---- */
+  .timeline{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);padding:22px 26px 16px;margin-bottom:24px}
+  .tl-head{display:flex;justify-content:space-between;align-items:baseline;gap:12px;flex-wrap:wrap}
+  .tl-head h2{margin:0}
+  .tl-now-txt{font-family:var(--mono);font-size:.78rem;color:var(--muted)}
+  .tl-bar{position:relative;height:9px;background:var(--wedge);border-radius:999px;margin:52px 0 34px}
+  .tl-mark{position:absolute;top:50%;width:1px;height:1px}
+  .tl-dot{
+    position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);
+    width:15px;height:15px;border-radius:50%;background:var(--card);border:2px solid #C3CCC6;
+  }
+  .tl-mark.next .tl-dot{border-color:var(--live);background:var(--live)}
+  .tl-cap{
+    position:absolute;bottom:14px;left:50%;transform:translateX(-50%);
+    white-space:nowrap;font-size:.72rem;color:var(--muted);text-align:center;line-height:1.35;
+  }
+  .tl-cap b{display:block;color:var(--ink);font-weight:500;font-size:.78rem}
+  .tl-mark.next .tl-cap,.tl-mark.next .tl-cap b{color:var(--live)}
+  .tl-at{
+    position:absolute;top:16px;left:50%;transform:translateX(-50%);
+    font-family:var(--mono);font-size:.72rem;color:var(--muted);
+  }
+  .tl-now{position:absolute;top:-9px;bottom:-9px;width:2px;background:var(--alert);display:none}
+  .tl-now.show{display:block}
+  .tl-now::after{
+    content:"";position:absolute;top:-5px;left:50%;transform:translateX(-50%);
+    border-left:4px solid transparent;border-right:4px solid transparent;border-top:6px solid var(--alert);
+  }
+  .tl-ticks{position:relative;height:14px}
+  .tl-tick{position:absolute;transform:translateX(-50%);font-family:var(--mono);font-size:.68rem;color:var(--muted);opacity:.75}
+  .hub{fill:var(--card);stroke:var(--line);stroke-width:1.5}
+  .chute{fill:var(--live)}
+
+  .readout .label{font-size:.8rem;color:var(--muted);margin:0 0 2px}
+  .clock{font-family:var(--mono);font-size:3.25rem;font-weight:500;line-height:1;letter-spacing:-0.02em;margin:0;font-variant-numeric:tabular-nums}
+  .next-line{margin:18px 0 0;padding-top:16px;border-top:1px solid var(--line);font-size:.95rem;color:var(--muted)}
+  .next-line strong{color:var(--ink);font-weight:600}
+
+  /* ---- connect ---- */
+  .connect{
+    width:100%;padding:15px;border:0;border-radius:var(--radius);
+    background:var(--live);color:#FFFFFF;
+    font-family:var(--sans);font-size:1rem;font-weight:500;cursor:pointer;margin-bottom:24px;
+  }
+  .connect:hover{opacity:.9}
+  .connect[disabled]{background:var(--wedge);color:var(--muted);cursor:default;opacity:1}
+
+  /* ---- schedule ---- */
+  h2{font-size:1rem;font-weight:600;margin:0 0 4px}
+  .hint{font-size:.85rem;color:var(--muted);margin:0 0 14px}
+  .sched{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);overflow:hidden}
+  .row{display:grid;grid-template-columns:30px 1fr auto;gap:14px;align-items:center;padding:16px 18px;border-bottom:1px solid var(--line)}
+  .row:last-child{border-bottom:0}
+  .row.is-next{background:color-mix(in srgb,var(--live) 7%,transparent)}
+  .pos{
+    font-family:var(--mono);font-size:.8rem;color:var(--muted);text-align:center;
+    cursor:grab;touch-action:none;user-select:none;
+    padding:7px 0;border-radius:7px;border:1px dashed transparent;
+  }
+  .pos:hover{border-color:var(--line);background:var(--paper);color:var(--ink)}
+  .pos:active{cursor:grabbing}
+  .row.is-next .pos{color:var(--live)}
+  .row.dragging{
+    position:relative;z-index:20;background:var(--card);
+    box-shadow:0 10px 26px rgba(20,36,31,.16);border-radius:10px;
+  }
+  .row.dragging .pos{cursor:grabbing;border-color:var(--live);color:var(--live)}
+  .row.drop-target{background:color-mix(in srgb,var(--live) 11%,transparent);box-shadow:inset 0 0 0 1.5px var(--live)}
+  .med-in{
+    font-family:var(--sans);font-size:1rem;font-weight:500;color:var(--ink);
+    background:transparent;border:1px solid transparent;border-radius:6px;
+    padding:3px 6px;margin:0 0 0 -6px;width:100%;max-width:230px;
+  }
+  .med-in:hover{border-color:var(--line)}
+  .med-in:focus{background:var(--paper);border-color:var(--live);outline:none}
+  .med-in::placeholder{color:var(--muted);font-weight:400;font-style:italic}
+  .med-in.empty{border-color:var(--alert);background:color-mix(in srgb,var(--alert) 6%,transparent)}
+  .med-in.empty::placeholder{color:var(--alert);font-style:normal}
+  .need-name{
+    display:none;font-size:.78rem;color:var(--alert);margin:4px 0 0;padding-left:0;
+  }
+  .need-name.show{display:block}
+  .meta{display:flex;align-items:center;gap:12px;margin-top:3px;flex-wrap:wrap}
+  .at{font-family:var(--mono);font-size:.875rem;color:var(--muted);font-variant-numeric:tabular-nums}
+  .dose{display:flex;align-items:center;gap:5px;font-size:.78rem;color:var(--muted)}
+  .dose select{
+    font-family:var(--sans);font-size:.78rem;color:var(--ink);background:var(--paper);
+    border:1px solid var(--line);border-radius:6px;padding:3px 6px;cursor:pointer;
+  }
+  .dose select:hover{border-color:var(--live)}
+  .controls{display:flex;gap:8px;align-items:center}
+  .time-field{display:flex;align-items:stretch;border:1px solid var(--line);border-radius:8px;background:var(--paper);overflow:hidden}
+  .time-field:focus-within{border-color:var(--live)}
+  .time-in{
+    font-family:var(--mono);font-size:.9rem;color:var(--ink);background:transparent;
+    border:0;padding:8px 2px 8px 10px;width:68px;text-align:center;letter-spacing:.04em;
+  }
+  .time-in:focus{outline:none}
+  .time-in::placeholder{color:var(--muted);opacity:.7}
+  .pick-btn{
+    border:0;border-left:1px solid var(--line);background:transparent;color:var(--muted);
+    padding:0 9px;cursor:pointer;display:flex;align-items:center;
+  }
+  .pick-btn:hover{color:var(--live);background:var(--wedge)}
+
+  /* ---- time picker sheet ---- */
+  #scrim{
+    display:none;position:fixed;inset:0;background:rgba(20,36,31,.35);
+    z-index:40;align-items:center;justify-content:center;padding:16px;
+  }
+  #scrim.show{display:flex}
+  .sheet{
+    background:var(--card);border-radius:var(--radius);width:100%;max-width:340px;
+    padding:22px;box-shadow:0 18px 50px rgba(20,36,31,.22);
+  }
+  .sheet h3{margin:0 0 2px;font-size:1rem;font-weight:600}
+  .sheet .for{margin:0 0 18px;font-size:.85rem;color:var(--muted)}
+  .big-time{
+    font-family:var(--mono);font-size:2.75rem;font-weight:500;text-align:center;
+    margin:0 0 18px;letter-spacing:-0.01em;font-variant-numeric:tabular-nums;
+  }
+  .spin{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:10px}
+  .spin .what{font-size:.9rem;color:var(--muted);flex:1}
+  .spin button{
+    width:44px;height:44px;flex:none;border:1px solid var(--line);background:var(--card);
+    border-radius:10px;font-size:1.4rem;line-height:1;color:var(--ink);cursor:pointer;
+  }
+  .spin button:hover{border-color:var(--live);color:var(--live)}
+  .spin .now{font-family:var(--mono);font-size:1.1rem;width:42px;text-align:center;font-variant-numeric:tabular-nums}
+  .chips{display:flex;flex-wrap:wrap;gap:8px;margin:18px 0 20px;padding-top:18px;border-top:1px solid var(--line)}
+  .chip{
+    border:1px solid var(--line);background:var(--card);border-radius:999px;
+    padding:7px 13px;font-family:var(--sans);font-size:.82rem;color:var(--ink);cursor:pointer;
+  }
+  .chip:hover{border-color:var(--live);color:var(--live)}
+  .sheet-actions{display:flex;gap:10px}
+  .sheet-actions button{flex:1;padding:12px;border-radius:10px;font-family:var(--sans);font-size:.95rem;font-weight:500;cursor:pointer}
+  .btn-cancel{border:1px solid var(--line);background:var(--card);color:var(--muted)}
+  .btn-use{border:0;background:var(--live);color:#fff}
+  .set{
+    border:1px solid var(--line);background:var(--card);color:var(--ink);
+    font-family:var(--sans);font-size:.875rem;font-weight:500;
+    padding:8px 14px;border-radius:8px;cursor:pointer;
+  }
+  .set:hover{border-color:var(--ink)}
+  :focus-visible{outline:2px solid var(--live);outline-offset:2px}
+
+  @media (max-width:620px){
+    .hero{grid-template-columns:1fr;gap:24px;padding:22px}
+    .readout{text-align:center}
+    .next-line{text-align:center}
+    .row{grid-template-columns:24px 1fr;row-gap:10px}
+    .controls{grid-column:1/-1;justify-content:flex-end}
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header>
+    <div>
+      <h1>Dispenser control</h1>
+      <p class="device">Med-Dispenser-ESP32</p>
+    </div>
+    <div class="link-state" id="link-state">
+      <svg class="bt-icon" width="15" height="15" viewBox="0 0 24 24" fill="none"
+           stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <path d="M7 7l10 10-5 4V3l5 4L7 17"></path>
+      </svg>
+      <span id="link-txt">Not connected</span>
+      <span class="led" id="led" role="status" aria-label="Connection indicator"></span>
+    </div>
+  </header>
+
+  <button class="connect" id="connect-btn" onclick="initBluetooth()">Connect dispenser</button>
+
+  <div id="banner"><span class="pip"></span><span id="banner-txt"></span></div>
+
+  <section class="hero">
+    <div class="dial-col">
+      <svg class="dial" viewBox="0 0 240 240" role="img" aria-label="Medicine carousel position">
+        <polygon class="chute" points="120,6 113,20 127,20"></polygon>
+        <g id="rotor"></g>
+        <circle class="hub" cx="120" cy="120" r="30"></circle>
+      </svg>
+      <span class="dial-caption">Carousel — slot at the marker is dispensed</span>
+    </div>
+    <div class="readout">
+      <p class="label">Device clock</p>
+      <p class="clock" id="clock-txt">--:--</p>
+      <p class="next-line" id="next-txt">Connect the dispenser to read its schedule.</p>
+    </div>
+  </section>
+
+  <section class="timeline">
+    <div class="tl-head">
+      <h2>Across the day</h2>
+      <span class="tl-now-txt" id="tl-now-txt">Device clock not available</span>
+    </div>
+    <div class="tl-bar" id="tl-bar">
+      <div class="tl-now" id="tl-now"></div>
+    </div>
+    <div class="tl-ticks" id="tl-ticks"></div>
+  </section>
+
+  <h2>Schedule</h2>
+  <p class="hint">Times are stored on the device and use a 24-hour clock, so 9 pm is 21:00.
+     Drag a slot number onto another to swap the two medicines.</p>
+  <div class="sched" id="sched"></div>
+
+</div>
+
+<div id="scrim" onclick="if(event.target===this) closePicker()">
+  <div class="sheet" role="dialog" aria-modal="true" aria-label="Choose a time">
+    <h3>Choose a time</h3>
+    <p class="for"><span id="pick-for"></span> &middot; 24-hour clock</p>
+    <p class="big-time" id="pick-display">08:00</p>
+
+    <div class="spin">
+      <span class="what">Hour</span>
+      <button onclick="bump('h',-1)" aria-label="Hour down">&minus;</button>
+      <span class="now" id="pick-h">08</span>
+      <button onclick="bump('h',1)" aria-label="Hour up">+</button>
+    </div>
+    <div class="spin">
+      <span class="what">Minute</span>
+      <button onclick="bump('m',-5)" aria-label="Minute down">&minus;</button>
+      <span class="now" id="pick-m">00</span>
+      <button onclick="bump('m',5)" aria-label="Minute up">+</button>
+    </div>
+
+    <div class="chips">
+      <button class="chip" onclick="preset(8,0)">Before breakfast</button>
+      <button class="chip" onclick="preset(13,0)">With lunch</button>
+      <button class="chip" onclick="preset(18,0)">Evening</button>
+      <button class="chip" onclick="preset(21,0)">Bedtime</button>
+    </div>
+
+    <div class="sheet-actions">
+      <button class="btn-cancel" onclick="closePicker()">Cancel</button>
+      <button class="btn-use" onclick="usePicked()">Use this time</button>
+    </div>
+  </div>
+</div>
+
+<script>
+  const SERVICE_UUID = "6e400001-b5a3-f393-e0a9-e50e24dcca9e";
+  const TX_UUID = "6e400003-b5a3-f393-e0a9-e50e24dcca9e";
+  const RX_UUID = "6e400002-b5a3-f393-e0a9-e50e24dcca9e";
+  let rxCharacteristic = null;
+
+  const MEDS = ["Medicine A", "Medicine B", "Medicine C", "Medicine D"];
+  const TIMES = ["08:00", "13:00", "18:00", "21:00"];
+  const DOSES = [1, 1, 1, 1];   // tablets per dose
+  let deviceClock = null;
+
+  const pad2 = n => String(n).padStart(2,'0');
+  const toMins = t => { const p = String(t).split(":"); return (+p[0])*60 + (+p[1]); };
+
+  /* ---------- build the dial ---------- */
+  const R_OUT = 108, R_IN = 34, C = 120;
+  function wedgePath(centreDeg){
+    const a0 = (centreDeg - 43) * Math.PI/180, a1 = (centreDeg + 43) * Math.PI/180;
+    const p = (r,a) => [C + r*Math.cos(a), C + r*Math.sin(a)];
+    const [x1,y1]=p(R_OUT,a0), [x2,y2]=p(R_OUT,a1), [x3,y3]=p(R_IN,a1), [x4,y4]=p(R_IN,a0);
+    return `M${x1} ${y1} A${R_OUT} ${R_OUT} 0 0 1 ${x2} ${y2} L${x3} ${y3} A${R_IN} ${R_IN} 0 0 0 ${x4} ${y4} Z`;
+  }
+  const NS = "http://www.w3.org/2000/svg";
+  const rotor = document.getElementById("rotor");
+  const LBL_R = 74;
+  const lblPos = i => {
+    const rad = (-90 + i*90) * Math.PI/180;
+    return [C + LBL_R*Math.cos(rad), C + LBL_R*Math.sin(rad)];
+  };
+
+  MEDS.forEach((_, i) => {
+    const deg = -90 + i*90;
+    const path = document.createElementNS(NS,"path");
+    path.setAttribute("class","wedge"); path.setAttribute("id",`wedge-${i}`);
+    path.setAttribute("d", wedgePath(deg));
+    rotor.appendChild(path);
+
+    const [lx, ly] = lblPos(i);
+    const g = document.createElementNS(NS,"g");
+    g.setAttribute("id",`numg-${i}`);
+    const mk = (cls, id, dy, txt) => {
+      const t = document.createElementNS(NS,"text");
+      t.setAttribute("class",cls); t.setAttribute("id",id);
+      t.setAttribute("x",lx); t.setAttribute("y",ly+dy);
+      t.textContent = txt; return t;
+    };
+    g.appendChild(mk("slot-num",  `num-${i}`,   -20, i+1));
+    g.appendChild(mk("slot-name", `dname-${i}`,  -2, ""));
+    g.appendChild(mk("slot-time", `dtime-${i}`,  15, ""));
+    rotor.appendChild(g);
+  });
+
+  function paintDial(){
+    MEDS.forEach((m, i) => {
+      document.getElementById(`dname-${i}`).textContent = m.length > 13 ? m.slice(0,12) + "…" : m;
+      document.getElementById(`dtime-${i}`).textContent = TIMES[i];
+    });
+  }
+
+  let rotorDeg = 0;
+  function pointAt(slot){
+    const target = -slot*90;
+    rotorDeg += ((target - rotorDeg) % 360 + 540) % 360 - 180;
+    rotor.style.transform = `rotate(${rotorDeg}deg)`;
+    MEDS.forEach((_,i) => {
+      const [lx, ly] = lblPos(i);
+      document.getElementById(`numg-${i}`).setAttribute("transform", `rotate(${-rotorDeg} ${lx} ${ly})`);
+    });
+  }
+
+  /* ---------- 24-hour timeline ---------- */
+  const tlBar = document.getElementById("tl-bar");
+  MEDS.forEach((_, i) => {
+    const mark = document.createElement("div");
+    mark.className = "tl-mark"; mark.id = `tl-${i}`;
+    mark.innerHTML = `<span class="tl-cap"><b id="tl-name-${i}"></b>slot ${i+1}</span>
+                      <span class="tl-dot"></span>
+                      <span class="tl-at" id="tl-at-${i}"></span>`;
+    tlBar.appendChild(mark);
+  });
+  const ticks = document.getElementById("tl-ticks");
+  [0,6,12,18,24].forEach(h => {
+    const t = document.createElement("span");
+    t.className = "tl-tick"; t.style.left = (h/24*100) + "%";
+    t.textContent = pad2(h) + ":00";
+    ticks.appendChild(t);
+  });
+
+  function paintTimeline(nextIdx){
+    MEDS.forEach((m, i) => {
+      const mins = toMins(TIMES[i]);
+      const mark = document.getElementById(`tl-${i}`);
+      mark.style.left = (mins/1440*100) + "%";
+      mark.classList.toggle("next", i === nextIdx);
+      document.getElementById(`tl-name-${i}`).textContent = m.length > 13 ? m.slice(0,12) + "…" : m;
+      document.getElementById(`tl-at-${i}`).textContent = TIMES[i];
+    });
+    const line = document.getElementById("tl-now");
+    if(deviceClock === null){
+      line.classList.remove("show");
+      document.getElementById("tl-now-txt").textContent = "Device clock not available";
+    } else {
+      line.classList.add("show");
+      line.style.left = (toMins(deviceClock)/1440*100) + "%";
+      document.getElementById("tl-now-txt").textContent = "Now " + deviceClock;
+    }
+  }
+
+  /* ---------- build the schedule rows ---------- */
+  const sched = document.getElementById("sched");
+  MEDS.forEach((med, i) => {
+    const row = document.createElement("div");
+    row.className = "row"; row.id = `row-${i}`;
+    row.innerHTML = `
+      <div class="pos" id="pos-${i}" title="Drag to swap with another slot">${i+1}</div>
+      <div>
+        <input class="med-in" id="med-${i}" value="${med}" maxlength="18"
+               placeholder="Type a medicine name" aria-label="Medicine in slot ${i+1}"
+               oninput="checkName(${i})" onblur="checkName(${i}, true)">
+        <p class="need-name" id="warn-${i}">Slot ${i+1} needs a medicine name.</p>
+        <div class="meta">
+          <span class="at" id="lbl-${i}">${TIMES[i]}</span>
+          <label class="dose">Dose:
+            <select id="dose-${i}" aria-label="Dose for slot ${i+1}">
+              ${[1,2,3,4].map(n => `<option value="${n}"${n===DOSES[i]?" selected":""}>${n} tablet${n>1?"s":""}</option>`).join("")}
+            </select>
+          </label>
+        </div>
+      </div>
+      <div class="controls">
+        <div class="time-field">
+          <input class="time-in" type="text" inputmode="numeric" maxlength="5" placeholder="HH:MM"
+                 autocomplete="off" oninput="scrubTime(this)" onpaste="setTimeout(()=>scrubTime(this),0)"
+                 id="val-${i}" aria-label="New time for slot ${i+1}">
+          <button class="pick-btn" onclick="openPicker(${i})" aria-label="Pick a time for slot ${i+1}">
+            <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+              <circle cx="12" cy="12" r="9"></circle><path d="M12 7v5l3 2"></path>
+            </svg>
+          </button>
+        </div>
+        <button class="set" onclick="commitSlot(${i})">Set</button>
+      </div>`;
+    sched.appendChild(row);
+  });
+
+  /* ---------- drag a slot onto another to swap medicines ---------- */
+  let dragFrom = null, dragStartY = 0, dragEl = null;
+
+  function rowUnder(y){
+    for(let j = 0; j < MEDS.length; j++){
+      if(j === dragFrom) continue;                 // its rect has moved with the drag
+      const r = document.getElementById(`row-${j}`).getBoundingClientRect();
+      if(y >= r.top && y <= r.bottom) return j;
+    }
+    return null;
+  }
+  function clearTargets(){
+    MEDS.forEach((_,j) => document.getElementById(`row-${j}`).classList.remove("drop-target"));
+  }
+
+  // Flags an empty slot name. onBlur also restores the last good name.
+  function checkName(i, onBlur){
+    const el = document.getElementById(`med-${i}`);
+    const warn = document.getElementById(`warn-${i}`);
+    const empty = el.value.trim() === "";
+
+    if(empty && onBlur){
+      el.value = MEDS[i];                    // put the last saved name back
+      el.classList.remove("empty");
+      warn.classList.remove("show");
+      showBanner(`Slot ${i+1} can't be left blank — the name was put back.`, false);
+      setTimeout(() => { document.getElementById("banner").classList.remove("show"); }, 3000);
+      return;
+    }
+    el.classList.toggle("empty", empty);
+    warn.classList.toggle("show", empty);
+  }
+
+  async function swapSlots(a, b){
+    if(!MEDS[a].trim() || !MEDS[b].trim()){
+      showBanner("Both slots need a medicine name before you can swap them.", false);
+      return;
+    }
+    [MEDS[a], MEDS[b]] = [MEDS[b], MEDS[a]];
+    [DOSES[a], DOSES[b]] = [DOSES[b], DOSES[a]];   // the dose belongs to the medicine
+    document.getElementById(`med-${a}`).value = MEDS[a];
+    document.getElementById(`med-${b}`).value = MEDS[b];
+    document.getElementById(`dose-${a}`).value = DOSES[a];
+    document.getElementById(`dose-${b}`).value = DOSES[b];
+    refreshNext();
+
+    if(rxCharacteristic){
+      try{
+        await rxCharacteristic.writeValue(new TextEncoder().encode(`MED:${a}:${MEDS[a]}`));
+        await rxCharacteristic.writeValue(new TextEncoder().encode(`MED:${b}:${MEDS[b]}`));
+      }catch(err){
+        showBanner("Swapped on screen, but the dispenser didn't accept it. Reconnect and press Set.", false);
+        return;
+      }
+    }
+    showBanner(`Swapped. Move the tablets between compartments ${a+1} and ${b+1} to match.`, true);
+    setTimeout(() => { document.getElementById("banner").classList.remove("show"); }, 5000);
+  }
+
+  MEDS.forEach((_, i) => {
+    const grip = document.getElementById(`pos-${i}`);
+    grip.addEventListener("pointerdown", e => {
+      dragFrom = i; dragStartY = e.clientY;
+      dragEl = document.getElementById(`row-${i}`);
+      dragEl.classList.add("dragging");
+      grip.setPointerCapture(e.pointerId);
+      e.preventDefault();
+    });
+    grip.addEventListener("pointermove", e => {
+      if(dragFrom === null) return;
+      dragEl.style.transform = `translateY(${e.clientY - dragStartY}px)`;
+      clearTargets();
+      const over = rowUnder(e.clientY);
+      if(over !== null) document.getElementById(`row-${over}`).classList.add("drop-target");
+    });
+    const endDrag = e => {
+      if(dragFrom === null) return;
+      const over = rowUnder(e.clientY);
+      dragEl.style.transform = "";
+      dragEl.classList.remove("dragging");
+      clearTargets();
+      const from = dragFrom;
+      dragFrom = null; dragEl = null;
+      if(over !== null) swapSlots(from, over);
+    };
+    grip.addEventListener("pointerup", endDrag);
+    grip.addEventListener("pointercancel", endDrag);
+  });
+
+  /* ---------- next-dose highlighting ---------- */
+  function refreshNext(){
+    paintDial();
+    MEDS.forEach((_,i) => {
+      document.getElementById(`wedge-${i}`).classList.remove("next");
+      document.getElementById(`numg-${i}`).classList.remove("next");
+      document.getElementById(`row-${i}`).classList.remove("is-next");
+    });
+    if(deviceClock === null){
+      document.getElementById("next-txt").textContent = "Connect the dispenser to read its schedule.";
+      paintTimeline(null);
+      return;
+    }
+    const now = toMins(deviceClock);
+    let best = null, bestGap = Infinity;
+    TIMES.forEach((t,i) => {
+      const gap = ((toMins(t) - now) % 1440 + 1440) % 1440;
+      if(gap < bestGap){ bestGap = gap; best = i; }
+    });
+    document.getElementById(`wedge-${best}`).classList.add("next");
+    document.getElementById(`numg-${best}`).classList.add("next");
+    document.getElementById(`row-${best}`).classList.add("is-next");
+    paintTimeline(best);
+    const h = Math.floor(bestGap/60), m = bestGap % 60;
+    const inTxt = bestGap === 0 ? "now" : (h ? `in ${h}h ${m}m` : `in ${m}m`);
+    document.getElementById("next-txt").innerHTML =
+      `Next dose <strong>${MEDS[best]}</strong> at ${TIMES[best]} — ${inTxt}`;
+    pointAt(best);
+  }
+  refreshNext();
+
+  /* ---------- bluetooth (unchanged protocol) ---------- */
+  function setLink(on, txt){
+    document.getElementById("led").classList.toggle("on", on);
+    document.getElementById("link-state").classList.toggle("on", on);
+    document.getElementById("link-txt").textContent = txt;
+  }
+  function showBanner(text, done){
+    const b = document.getElementById("banner");
+    document.getElementById("banner-txt").textContent = text;
+    b.classList.add("show"); b.classList.toggle("done", !!done);
+  }
+
+  async function initBluetooth() {
+    try {
+      let targetDevice = await navigator.bluetooth.requestDevice({
+        filters: [{ name: 'Med-Dispenser-ESP32' }],
+        optionalServices: [SERVICE_UUID]
+      });
+      targetDevice.addEventListener('gattserverdisconnected', () => {
+        rxCharacteristic = null;
+        setLink(false, "Not connected");
+        const b = document.getElementById("connect-btn");
+        b.textContent = "Connect dispenser"; b.disabled = false;
+        showBanner("Dispenser disconnected. Connect again to make changes.", false);
+      });
+      const connection = await targetDevice.gatt.connect();
+      const service = await connection.getPrimaryService(SERVICE_UUID);
+      rxCharacteristic = await service.getCharacteristic(RX_UUID);
+      const txCharacteristic = await service.getCharacteristic(TX_UUID);
+
+      await txCharacteristic.startNotifications();
+      txCharacteristic.addEventListener('characteristicvaluechanged', (event) => {
+        const incomingStr = new TextDecoder().decode(event.target.value);
+
+        // Route 1: Handle Event Triggers (Dispensation Warnings)
+        if (incomingStr.startsWith("DISPENSE:")) {
+          const medName = incomingStr.split(":")[1];
+          showBanner(`Dispensing now — take your ${medName}`, false);
+          const idx = MEDS.findIndex(m => m.toLowerCase() === String(medName).trim().toLowerCase());
+          if(idx > -1){
+            pointAt(idx);
+            document.getElementById(`wedge-${idx}`).classList.add("firing");
+            document.getElementById(`numg-${idx}`).classList.add("firing");
+          }
+          return;
+        }
+
+        if (incomingStr.startsWith("CLEARED:")) {
+          showBanner("Dose confirmed", true);
+          MEDS.forEach((_,i) => {
+            document.getElementById(`wedge-${i}`).classList.remove("firing");
+            document.getElementById(`numg-${i}`).classList.remove("firing");
+          });
+          refreshNext();
+          setTimeout(() => { document.getElementById("banner").classList.remove("show"); }, 3000);
+          return;
+        }
+
+        // Route 2: Handle Routine 2-Second System Telemetry Packets
+        if(incomingStr.includes("|")) {
+          const segments = incomingStr.split("|");
+
+          const clockParts = segments[0].split(":");
+          if(clockParts.length >= 2) {
+            deviceClock = clockParts[0].padStart(2,'0') + ":" + clockParts[1].padStart(2,'0');
+            document.getElementById("clock-txt").textContent = deviceClock;
+          }
+
+          for(let i = 0; i < 4; i++) {
+            if(segments[i+1] && segments[i+1].includes(":")) {
+              const timeParts = segments[i+1].split(":");
+              TIMES[i] = timeParts[0].padStart(2,'0') + ":" + timeParts[1].padStart(2,'0');
+              document.getElementById(`lbl-${i}`).textContent = TIMES[i];
+            }
+          }
+          refreshNext();
+        }
+      });
+      setLink(true, "Connected");
+      const btn = document.getElementById("connect-btn");
+      btn.textContent = "Dispenser connected"; btn.disabled = true;
+    } catch(err) {
+      setLink(false, "Not connected");
+      showBanner("Could not connect. Check the dispenser is powered on and in range.", false);
+    }
+  }
+
+  /* ---------- time picker ---------- */
+  let pickSlot = 0, pickH = 8, pickM = 0;
+  const pad = n => String(n).padStart(2,'0');
+
+  // Digits only; the colon is inserted automatically after the hour.
+  function scrubTime(el){
+    const before = el.value;
+    const caretWas = el.selectionStart;
+    // how many digits sat to the left of the caret
+    const digitsLeft = before.slice(0, caretWas).replace(/\D/g, "").length;
+
+    const digits = before.replace(/\D/g, "").slice(0, 4);
+    const v = digits.length > 2 ? digits.slice(0,2) + ":" + digits.slice(2) : digits;
+
+    if(v !== before){
+      // put the caret back after the same digit, stepping over the colon
+      let caret = 0, seen = 0;
+      while(caret < v.length && seen < digitsLeft){
+        if(/\d/.test(v[caret])) seen++;
+        caret++;
+      }
+      if(v[caret] === ":") caret++;
+      el.value = v;
+      el.setSelectionRange(caret, caret);
+    }
+  }
+
+  // Accepts 8, 815, 8:15, 08:15, 0815
+  function parseTyped(raw){
+    const s = String(raw).trim();
+    if(!s) return null;
+    let h, m;
+    const colon = s.match(/^(\d{1,2}):(\d{2})$/);
+    if(colon){ h = +colon[1]; m = +colon[2]; }
+    else if(/^\d{1,2}$/.test(s)){ h = +s; m = 0; }
+    else if(/^\d{3,4}$/.test(s)){ h = +s.slice(0,-2); m = +s.slice(-2); }
+    else return null;
+    if(h < 0 || h > 23 || m < 0 || m > 59) return null;
+    return pad(h) + ":" + pad(m);
+  }
+
+  function paintPicker(){
+    document.getElementById("pick-h").textContent = pad(pickH);
+    document.getElementById("pick-m").textContent = pad(pickM);
+    document.getElementById("pick-display").textContent = pad(pickH) + ":" + pad(pickM);
+  }
+  function openPicker(slot){
+    pickSlot = slot;
+    const typed = parseTyped(document.getElementById(`val-${slot}`).value) || TIMES[slot];
+    pickH = +typed.split(":")[0]; pickM = +typed.split(":")[1];
+    document.getElementById("pick-for").textContent = `Slot ${slot+1} — ${MEDS[slot]}`;
+    paintPicker();
+    document.getElementById("scrim").classList.add("show");
+  }
+  function closePicker(){ document.getElementById("scrim").classList.remove("show"); }
+  function bump(unit, by){
+    if(unit === 'h') pickH = (pickH + by + 24) % 24;
+    else pickM = (pickM + by + 60) % 60;
+    paintPicker();
+  }
+  function preset(h, m){ pickH = h; pickM = m; paintPicker(); }
+  function usePicked(){
+    document.getElementById(`val-${pickSlot}`).value = pad(pickH) + ":" + pad(pickM);
+    closePicker();
+  }
+  document.addEventListener("keydown", e => { if(e.key === "Escape") closePicker(); });
+
+  async function commitSlot(slotIndex) {
+    const rawTime = document.getElementById(`val-${slotIndex}`).value;
+    const timeInput = parseTyped(rawTime);
+    if(rawTime.trim() && !timeInput) return showBanner("That time isn't valid. Try 08:15.", false);
+    const nameInput = document.getElementById(`med-${slotIndex}`).value.trim();
+    const nameChanged = nameInput && nameInput !== MEDS[slotIndex];
+    const doseInput = +document.getElementById(`dose-${slotIndex}`).value;
+    const doseChanged = doseInput !== DOSES[slotIndex];
+
+    if(!nameInput) return showBanner("Slot " + (slotIndex+1) + " needs a medicine name.", false);
+    if(!timeInput && !nameChanged && !doseChanged) return showBanner("Change the medicine, dose or time first.", false);
+    if (!rxCharacteristic) return showBanner("Connect the dispenser first.", false);
+
+    const sent = [];
+    try {
+      // Medicine assignment for this carousel position: "MED:ID:Name"
+      if(nameChanged){
+        await rxCharacteristic.writeValue(new TextEncoder().encode(`MED:${slotIndex}:${nameInput}`));
+        MEDS[slotIndex] = nameInput;
+        sent.push(`slot ${slotIndex+1} is now ${nameInput}`);
+      }
+      // Output format guarantees "SET:ID:HH:MM"
+      if(timeInput){
+        await rxCharacteristic.writeValue(new TextEncoder().encode(`SET:${slotIndex}:${timeInput}`));
+        TIMES[slotIndex] = timeInput;
+        document.getElementById(`lbl-${slotIndex}`).textContent = timeInput;
+        sent.push(`due at ${timeInput}`);
+      }
+      // Dose for this carousel position: "DOSE:ID:tablets"
+      if(doseChanged){
+        await rxCharacteristic.writeValue(new TextEncoder().encode(`DOSE:${slotIndex}:${doseInput}`));
+        DOSES[slotIndex] = doseInput;
+        sent.push(`${doseInput} tablet${doseInput>1?"s":""} per dose`);
+      }
+      refreshNext();
+      showBanner(sent.join(", "), true);
+      setTimeout(() => { document.getElementById("banner").classList.remove("show"); }, 2500);
+    } catch(err) {
+      document.getElementById(`med-${slotIndex}`).value = MEDS[slotIndex];
+      showBanner("Could not send the update. Reconnect and try again.", false);
+    }
+  }
+</script>
+</body>
+</html>
