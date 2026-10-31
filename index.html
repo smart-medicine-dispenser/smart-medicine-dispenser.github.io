@@ -80,20 +80,18 @@ padding:28px;margin-bottom:24px;
 }
 .dial-col{display:flex;flex-direction:column;align-items:center;gap:10px}
 .dial-caption{font-size:.75rem;color:var(--muted)}
-svg.dial{display:block;width:216px;height:216px}
+svg.dial{display:block;width:252px;height:252px}
 #rotor{transform-origin:120px 120px;transition:transform .9s cubic-bezier(.3,.7,.2,1)}
 @media (prefers-reduced-motion: reduce){#rotor{transition:none}}
 .wedge{stroke-width:2}
 .wedge.next{fill:var(--live);fill-opacity:.22;stroke:var(--live);stroke-opacity:1;stroke-width:3}
 .wedge.firing{fill:var(--alert);fill-opacity:.2;stroke:var(--alert);stroke-opacity:.6}
 .wedge.off{fill:var(--wedge);fill-opacity:.45;stroke-dasharray:3 3;stroke:#C3CCC6;stroke-opacity:.8}
-.slot-num{font-family:var(--mono);font-size:9px;fill:var(--muted);text-anchor:middle;dominant-baseline:central;letter-spacing:.08em}
-.slot-name{font-family:var(--sans);font-size:10.5px;font-weight:500;fill:var(--ink);text-anchor:middle;dominant-baseline:central}
-.slot-time{font-family:var(--mono);font-size:11px;fill:var(--muted);text-anchor:middle;dominant-baseline:central}
+.slot-num{font-family:var(--sans);font-size:21px;font-weight:600;fill:var(--ink);text-anchor:middle;dominant-baseline:central}
+.slot-time{font-family:var(--mono);font-size:13px;fill:var(--muted);text-anchor:middle;dominant-baseline:central}
 #rotor g.next .slot-num,#rotor g.next .slot-time{fill:var(--live)}
-#rotor g.next .slot-name{fill:var(--live)}
-#rotor g.firing .slot-num,#rotor g.firing .slot-time,#rotor g.firing .slot-name{fill:var(--alert)}
-#rotor g.off .slot-num,#rotor g.off .slot-time,#rotor g.off .slot-name{opacity:.4}
+#rotor g.firing .slot-num,#rotor g.firing .slot-time{fill:var(--alert)}
+#rotor g.off .slot-num,#rotor g.off .slot-time{opacity:.4}
 
 /* ---- 24-hour timeline ---- */
 .timeline{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);padding:22px 26px 16px;margin-bottom:24px}
@@ -289,7 +287,7 @@ stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="r
 <g id="rotor"></g>
 <circle class="hub" cx="120" cy="120" r="30"></circle>
 </svg>
-<span class="dial-caption">Carousel — slot at the marker is dispensed</span>
+<span class="dial-caption">The slot at the marker is dispensed · colours match the list below</span>
 </div>
 <div class="readout">
 <p class="label">Device clock</p>
@@ -413,16 +411,14 @@ t.setAttribute("class",cls); t.setAttribute("id",id);
 t.setAttribute("x",lx); t.setAttribute("y",ly+dy);
 t.textContent = txt; return t;
 };
-g.appendChild(mk("slot-num",  `num-${i}`,   -20, i+1));
-g.appendChild(mk("slot-name", `dname-${i}`,  -2, ""));
-g.appendChild(mk("slot-time", `dtime-${i}`,  15, ""));
+g.appendChild(mk("slot-num",  `num-${i}`,  -14, i+1));
+g.appendChild(mk("slot-time", `dtime-${i}`, 14, ""));
 rotor.appendChild(g);
 });
 
 function paintDial(){
 MEDS.forEach((m, i) => {
-document.getElementById(`dname-${i}`).textContent = shortName(m);
-document.getElementById(`dtime-${i}`).textContent = ACTIVE[i] ? TIMES[i] : "removed";
+document.getElementById(`dtime-${i}`).textContent = ACTIVE[i] ? TIMES[i] : "off";
 document.getElementById(`wedge-${i}`).classList.toggle("off", !ACTIVE[i]);
 document.getElementById(`numg-${i}`).classList.toggle("off", !ACTIVE[i]);
 });
